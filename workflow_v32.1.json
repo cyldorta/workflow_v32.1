@@ -1,0 +1,1673 @@
+{
+  "name": "Assistente WhatsApp GPT v32.1 - Freelancer Imóveis Aracaju",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "whatsapp-leadbot",
+        "options": {}
+      },
+      "id": "09cb2005-bb48-4ef1-84f7-4c41a4bd59d2",
+      "name": "1b.Webhook Meta Verify GET",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2080,
+        64
+      ],
+      "webhookId": "ebd35121-19e0-4357-ad37-4076f1cdb0b8"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst VERIFY_TOKEN = ($env.WHATSAPP_VERIFY_TOKEN || '').trim();\nif (!VERIFY_TOKEN) return [{ json: { error: 'WHATSAPP_VERIFY_TOKEN nao configurado' } }];\nif (data['hub.mode'] === 'subscribe' && data['hub.verify_token'] === VERIFY_TOKEN) {\n  return [{ json: { challenge: data['hub.challenge'] } }];\n}\nreturn [{ json: { error: 'forbidden' } }];"
+      },
+      "id": "09709b33-16a3-441a-86a6-7021307fe1d2",
+      "name": "1c.Validar e Responder Challenge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1856,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": {
+          "responseCode": "={{ $json.error ? 403 : 200 }}"
+        }
+      },
+      "id": "a2ffd7b6-3fe9-42fd-8c87-16456f3eae5a",
+      "name": "1d.Respond Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -1632,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-leadbot",
+        "options": {
+          "responseData": "{\"status\":\"ok\"}"
+        }
+      },
+      "id": "94b4a3f2-4bf9-469a-abdb-fda830fce301",
+      "name": "1.Webhook WhatsApp POST",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2080,
+        240
+      ],
+      "webhookId": "9e2b6fa8-e7e2-4e28-8d1b-528e8fa1dcc6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: Valida ambiente obrigatório no primeiro nó — falha rápida e explícita\nconst required = [\n  'WHATSAPP_VERIFY_TOKEN',\n  'WHATSAPP_PHONE_NUMBER_ID',\n  'GOOGLE_SHEET_ID',\n  'OPENAI_API_KEY',\n  'CORRETOR_PHONE'\n];\nconst missing = required.filter(k => !($env[k] || '').trim());\nif (missing.length) {\n  throw new Error('Variáveis de ambiente ausentes: ' + missing.join(', '));\n}\n\n// FIX #12: META_API_VERSION obrigatória — sem fallback silencioso para versão desatualizada\nif (!($env.META_API_VERSION || '').trim()) {\n  throw new Error('META_API_VERSION não configurada. Defina como v22.0 ou superior.');\n}\n\nreturn [{ json: $input.first().json }];"
+      },
+      "id": "5857765d-752e-4aba-bae5-404da9d6437f",
+      "name": "0.Validar Ambiente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1856,
+        240
+      ],
+      "notes": "FIX #12: falha imediata se variáveis obrigatórias ausentes. Nunca chega na produção com placeholder."
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: extração robusta de payload Meta\ntry {\n  const data = $input.first().json;\n  if (!data.entry?.[0]?.changes) return [{ json: { skip: true, reason: 'payload_invalido' } }];\n  const change = data.entry[0].changes[0];\n  if (!change.value.messages?.length) return [{ json: { skip: true, reason: 'status_update' } }];\n  const msg = change.value.messages[0];\n  const messageId = msg.id || '';\n  const phone = change.value.contacts?.[0]?.wa_id || '';\n  if (!phone) return [{ json: { skip: true, reason: 'phone_ausente' } }];\n  if (!messageId) return [{ json: { skip: true, reason: 'message_id_ausente' } }];\n  const timestamp = msg.timestamp\n    ? new Date(Number(msg.timestamp) * 1000).toISOString()\n    : new Date().toISOString();\n  const type = msg.type;\n  let content = '', mediaId = '';\n  if (type === 'text') content = (msg.text?.body || '').trim().slice(0, 2000);\n  else if (type === 'audio') mediaId = msg.audio?.id || '';\n  else if (type === 'voice') mediaId = msg.voice?.id || '';\n  else if (type === 'image') { mediaId = msg.image?.id || ''; content = (msg.image?.caption || '').slice(0, 200); }\n  else if (type === 'document') content = '[cliente enviou documento]';\n  else if (type === 'sticker') content = '[cliente enviou sticker]';\n  else if (type === 'video') content = '[cliente enviou video]';\n  else if (type === 'location') content = '[cliente enviou localizacao]';\n  else content = '[tipo ' + type + ']';\n  return [{ json: { phone, messageId, type, content, mediaId, timestamp, skip: false } }];\n} catch(e) {\n  return [{ json: { skip: true, reason: 'erro_extracao: ' + e.message } }];\n}"
+      },
+      "id": "af680997-492e-4990-a11b-104f23dc1214",
+      "name": "2.Extrair e Validar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1632,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6f25902a-50fd-458e-9aa8-c8d50a51323a",
+      "name": "3.IF Processar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: Dedup atômico via Upstash Redis SET NX EX\n// FIX #3: fallback Sheets REMOVIDO — dedup não-atômico dá falsa segurança.\n// Se Redis cair, aceita mensagem (eventual duplicata rara > duplicata garantida com race condition).\nconst ctx = $input.first().json;\nconst messageId = ctx.messageId;\nconst UPSTASH_URL = ($env.UPSTASH_REDIS_URL || '').trim();\nconst UPSTASH_TOKEN = ($env.UPSTASH_REDIS_TOKEN || '').trim();\n\nif (!UPSTASH_URL || !UPSTASH_TOKEN) {\n  // Redis não configurado: aceita mensagem, loga warning\n  console.log('[DEDUP-WARN] Redis não configurado. Dedup desativado — risco de duplicata baixo.');\n  return [{ json: { ...ctx, skip: false, dedupMode: 'disabled' } }];\n}\n\ntry {\n  const redisKey = `dedup:msg:${messageId}`;\n  const response = await $helpers.httpRequest({\n    method: 'POST',\n    url: `${UPSTASH_URL}/set/${encodeURIComponent(redisKey)}/1/nx/ex/86400`,\n    headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }\n  });\n  if (response?.result !== 'OK') {\n    return [{ json: { ...ctx, skip: true, reason: 'dedup_redis_duplicata', dedupMode: 'redis' } }];\n  }\n  return [{ json: { ...ctx, skip: false, dedupMode: 'redis' } }];\n} catch(e) {\n  // Redis com erro: aceita mensagem com log — melhor eventual duplicata que falsa segurança\n  console.log('[DEDUP-ERROR] Redis falhou, aceitando mensagem: ' + e.message);\n  return [{ json: { ...ctx, skip: false, dedupMode: 'redis_error', dedupRedisErro: e.message } }];\n}"
+      },
+      "id": "eda6aebd-8394-4711-98df-2ba7a53422b8",
+      "name": "3r.Dedup Redis SET NX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        240
+      ],
+      "notes": "FIX #3: fallback Sheets removido. Race condition não-atômica eliminada. Redis down = aceita com log."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "167e6ce6-97b4-4d84-9761-3307c5aacae0",
+      "name": "3s.IF Mensagem Nova?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        240
+      ],
+      "notes": "TRUE = mensagem nova, segue. FALSE = duplicata, encerra."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "or",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "voice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 2
+        }
+      },
+      "id": "c4abcd03-06b1-4f66-914b-7a891ef515e6",
+      "name": "4.Switch Tipo Mensagem",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -752,
+        240
+      ],
+      "notes": "FIX #1: cada branch vai para seu próprio nó final que converge em 10b via caminhos INDEPENDENTES. Não há merge implícito de múltiplas arestas."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mediaId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a031bb3f-4b56-4629-b9ea-0651e38d0e01",
+      "name": "4b.IF MediaId Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0 FIX #2/#4: propaga contexto original como _msgCtx.\n// Entrada: item de 4b (branch FALSE = sem mediaId), contém phone/messageId/type/timestamp.\nconst ctx = $input.first().json;\nreturn [{ json: {\n  _msgCtx: {\n    phone: ctx.phone,\n    messageId: ctx.messageId,\n    type: ctx.type,\n    timestamp: ctx.timestamp\n  },\n  content: '[cliente enviou audio mas mediaId ausente — não foi possível processar]',\n  mediaId: ''\n} }];"
+      },
+      "id": "ee702816-980a-4dae-abe3-5e223997b2e1",
+      "name": "4c.Audio Sem MediaId Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        192
+      ],
+      "notes": "FIX #2/#4: propaga _msgCtx a partir do item de entrada (sem cross-node lookup)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0 FIX #2: salva contexto original em _msgCtx ANTES de qualquer chamada externa.\n// Downstream (incluindo error paths) sempre tem acesso via item._msgCtx, sem cross-node lookup.\nconst ctx = $input.first().json;\nreturn [{ json: {\n  _msgCtx: {\n    phone: ctx.phone,\n    messageId: ctx.messageId,\n    type: ctx.type,\n    timestamp: ctx.timestamp\n  },\n  mediaId: ctx.mediaId\n} }];"
+      },
+      "id": "0c7a588c-cc49-4eb5-89ba-064654cd1111",
+      "name": "4d.Preparar Contexto Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -16
+      ],
+      "notes": "FIX #2: _msgCtx encapsulado ANTES das chamadas HTTP. Elimina dependência de nome de nó upstream."
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $env.META_API_VERSION }}/{{ $json.mediaId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "aa338dc2-3a5c-48a1-af7d-1f4491c9ecaa",
+      "name": "5.Buscar URL Audio Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -96,
+        -48
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "FIX #4: onError adicionado. Error output conectado a 7b com _msgCtx preservado no item pai."
+    },
+    {
+      "parameters": {
+        "jsCode": "// onError de node5: N8N passa o item de entrada (output de node4d = {_msgCtx, mediaId})\nconst item = $input.first().json;\nconst msgCtx = item._msgCtx || {};\nconsole.error('[AUDIO-URL-ERROR] Falha Meta API.');\nreturn [{ json: { _msgCtx: msgCtx, content: '[audio: URL Meta indisponível]' } }];"
+      },
+      "id": "b9d517ee-4ff0-4383-a4b7-57e83fff4378",
+      "name": "5e.Erro Buscar URL Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        112
+      ],
+      "notes": "FIX #4: error path com contexto preservado. Nunca perde phone/messageId."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nconst msgCtx=$('4d.Preparar Contexto Audio').first().json._msgCtx||{};\nif(!item.url) return [{json:{_msgCtx:msgCtx,content:'[audio: URL não retornada pela Meta API]'}}];\nreturn [{json:{_msgCtx:msgCtx,audioUrl:item.url,mediaId:item.id||''}}];"
+      },
+      "id": "2b5c29f9-a043-453f-9d8c-292f8ad9bb7c",
+      "name": "5b.Extrair URL Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.audioUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "e6288596-d942-40ac-af82-1465376da4bd",
+      "name": "6.Baixar Audio OGG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        336,
+        -48
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unico ponto $('4d') na branch principal (node8 é o outro, inevitavel por Whisper substituir json)\nconst item = $input.first();\nconst msgCtx = $('4d.Preparar Contexto Audio').first().json._msgCtx || {};\nconst b64 = item.binary?.data?.data || '';\nconst sizeBytes = b64 ? Math.ceil((b64.length * 3) / 4) : 0;\nif (sizeBytes > 25 * 1024 * 1024) {\n  console.log('[AUDIO-WARN] Arquivo >25MB, pulando Whisper.');\n  return [{ json: { _msgCtx: msgCtx, content: '[audio muito grande para transcrever]' } }];\n}\n// Restaura _msgCtx no json para node7b poder usar item._msgCtx no error path\nreturn [{ json: { _msgCtx: msgCtx }, binary: item.binary }];"
+      },
+      "id": "fcfecb42-8fa8-439c-88a3-8dd81ed6b489",
+      "name": "6v.Validar Tamanho Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// onError de node6: N8N passa o item de entrada (output de node5b = {_msgCtx, audioUrl})\nconst item = $input.first().json;\nconst msgCtx = item._msgCtx || {};\nreturn [{ json: { _msgCtx: msgCtx, content: '[audio: download falhou — não foi possível transcrever]' } }];"
+      },
+      "id": "78a544f0-d41e-46c7-8a96-bd79d6301d8e",
+      "name": "6e.Erro Download Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "requestOptions": {}
+      },
+      "id": "f32f06a5-3d4f-4631-b7fc-4737dd8575c7",
+      "name": "7.Whisper Transcrever",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        752,
+        -48
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// input ao Whisper = output de node6v = {json:{_msgCtx}, binary}\n// N8N onError passa o input item → item._msgCtx disponivel\nconst item = $input.first().json;\nconst msgCtx = item._msgCtx || {};\nconst content = item.content || '[audio: transcrição Whisper falhou]';\nreturn [{ json: { _msgCtx: msgCtx, content } }];"
+      },
+      "id": "d1fe033b-295d-44a2-9c41-d2c90e2a4258",
+      "name": "7b.Whisper Erro Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try{\n  const item=$input.first().json;\n  const msgCtx=$('4d.Preparar Contexto Audio').first().json._msgCtx||{};\n  const transcricao=(item.text||'[audio sem transcrição]').slice(0,1000);\n  return [{json:{_msgCtx:msgCtx,content:'[Audio]: '+transcricao}}];\n}catch(e){\n  const msgCtx=$('4d.Preparar Contexto Audio').first().json._msgCtx||{};\n  return [{json:{_msgCtx:msgCtx,content:'[audio erro: '+e.message+']'}}];\n}"
+      },
+      "id": "86d91411-4598-4001-8a31-e745fec6fbce",
+      "name": "8.Montar Contexto Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0 FIX #2/#4: consolida audio de volta para o fluxo principal.\n// Aceita _msgCtx de item.json (propagado por 4c, 5e, 6e, 7b, 8).\nconst item = $input.first().json;\nconst msgCtx = item._msgCtx || {};\nif (!msgCtx.phone) throw new Error('8b: _msgCtx.phone ausente.');\nreturn [{ json: {\n  phone: msgCtx.phone,\n  messageId: msgCtx.messageId,\n  type: msgCtx.type || 'audio',\n  msg: item.content || '[audio]',\n  mediaId: '',\n  timestamp: msgCtx.timestamp,\n  skip: false\n} }];"
+      },
+      "id": "e5584fa7-5b12-49e0-a96b-57e351a9412c",
+      "name": "8b.Consolidar Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: imagem — solicita descrição em texto ao cliente.\nconst ctx = $input.first().json;\nconst legenda = ctx.content ? ' Legenda: ' + ctx.content : '';\nreturn [{ json: {\n  phone: ctx.phone,\n  messageId: ctx.messageId,\n  type: ctx.type,\n  msg: '[Cliente enviou imagem.' + legenda + ' Peça para descrever em texto o imóvel que procura.]',\n  mediaId: '',\n  timestamp: ctx.timestamp,\n  skip: false\n} }];"
+      },
+      "id": "dc50f417-6d33-4a39-a455-ed798bc1a0b7",
+      "name": "9.Tratar Imagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: texto e outros tipos — passa diretamente para 10b.\nconst ctx = $input.first().json;\nreturn [{ json: {\n  phone: ctx.phone,\n  messageId: ctx.messageId,\n  type: ctx.type,\n  msg: ctx.content || '',\n  mediaId: '',\n  timestamp: ctx.timestamp,\n  skip: false\n} }];"
+      },
+      "id": "84004047-745e-4815-a6a3-e017f81a5f60",
+      "name": "10.Texto e Outros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0 FIX #1: ponto de convergência de todas as rotas (texto, imagem, audio).\n// Valida que phone e msg chegaram corretamente antes de continuar.\nconst ctx = $input.first().json;\nif (!ctx.phone) throw new Error('10b: phone ausente. Keys: ' + JSON.stringify(Object.keys(ctx)));\nif (ctx.msg === undefined) throw new Error('10b: campo msg ausente');\nreturn [{ json: ctx }];"
+      },
+      "id": "1bfdebb2-5a19-495c-a011-93b59c5e4a2a",
+      "name": "10b.Consolidar Rotas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        240
+      ],
+      "notes": "FIX #1: ponto de merge único. Garante phone e msg presentes antes do CRM."
+    },
+    {
+      "parameters": {
+        "operation": "lookup",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        }
+      },
+      "id": "fcb8d335-8234-43f7-a009-0cbbb707905e",
+      "name": "11.CRM Buscar Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1376,
+        240
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: prepara contexto do lead para o GPT.\n// Aceita múltiplos itens do Sheets (dedup de linhas duplicadas por data mais recente).\nconst allItems = $input.all();\nconst first = allItems[0]?.json || {};\nconst phone = first.phone || '';\nconst msg = (first.msg || '').slice(0, 2000);\nconst timestamp = first.timestamp || new Date().toISOString();\nconst messageId = first.messageId || '';\nif (!phone) throw new Error('11b: phone ausente.');\nconst isNovo = !first.Telefone;\nconst status = isNovo ? 'NOVO' : (first.Status || 'NOVO');\nconst score = isNaN(Number(first.Score)) ? 0 : Math.min(100, Math.max(0, Number(first.Score)));\nconst tentativas = Number(first.Tentativas_Pos_Entrega) || 0;\nconst resumo = (first.Resumo || '').slice(0, 300);\nlet historicoRaw = (first.Historico || '').replace(/[\\u0000-\\u001F\\u007F]/g, ' ');\nif (historicoRaw.length > 6000) historicoRaw = historicoRaw.slice(-6000).replace(/^[^\\n]*\\n/, '');\nif (allItems.length > 1) {\n  const rec = allItems.reduce((a, b) => new Date(a.json.ULTIMA_MSG || 0) > new Date(b.json.ULTIMA_MSG || 0) ? a : b).json;\n  historicoRaw = (rec.Historico || '').replace(/[\\u0000-\\u001F\\u007F]/g, ' ');\n  if (historicoRaw.length > 6000) historicoRaw = historicoRaw.slice(-6000).replace(/^[^\\n]*\\n/, '');\n}\nreturn [{ json: { status, historicoRaw, score, isNovo, tentativas, phone, msg, timestamp, messageId, resumo } }];"
+      },
+      "id": "6d00971c-6cf1-4b26-a463-e8eff757068e",
+      "name": "11b.Preparar Contexto Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0: Sheets inacessível — cria contexto de lead novo com log de erro.\nconst ctx = $input.first().json;\nconsole.error('[CRM-ERROR] Sheets inacessível para: ' + (ctx.phone || '?'));\nreturn [{ json: {\n  status: 'NOVO',\n  historicoRaw: '',\n  score: 0,\n  isNovo: true,\n  tentativas: 0,\n  phone: ctx.phone || '',\n  msg: ctx.msg || '',\n  timestamp: ctx.timestamp || new Date().toISOString(),\n  messageId: ctx.messageId || '',\n  resumo: '',\n  _sheetsError: true\n} }];"
+      },
+      "id": "438f493f-f7a7-4a0a-837a-1894a262e36b",
+      "name": "11e.Erro CRM Buscar Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ENTREGUE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "74cb4944-1751-4277-a112-2a66cbd8d428",
+      "name": "13.IF Status ENTREGUE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tentativas }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ac875c1a-6b39-40fc-abfe-1e315d8a1f77",
+      "name": "13b.IF Tentativas Excedidas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nreturn [{ json: {\n  _reopenCtx: {\n    phone:     ctx.phone,\n    msg:       ctx.msg,\n    timestamp: ctx.timestamp,\n    messageId: ctx.messageId\n  },\n  ...ctx\n} }];"
+      },
+      "id": "f9979308-dee9-4dcd-b3bc-467890567792",
+      "name": "13c_p.Salvar Ctx Reabrir",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefone": "={{ $json.phone }}",
+            "Status": "NOVO",
+            "Historico": "",
+            "Score": "0",
+            "Resumo": "",
+            "ULTIMA_MSG": "={{ $json.timestamp }}",
+            "Tentativas_Pos_Entrega": "0",
+            "Data_Entrega": ""
+          }
+        },
+        "options": {}
+      },
+      "id": "e24414b5-3e09-47bb-9c27-21e12600e98d",
+      "name": "13c.Reabrir Lead Expirado",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2464,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sheets substituiu item.json pelos dados gravados (nomes das colunas)\n// _reopenCtx preserva phone, msg, timestamp, messageId originais\nconst saved = $('13c_p.Salvar Ctx Reabrir').first().json._reopenCtx || {};\nreturn [{ json: {\n  phone:       saved.phone     || '',\n  msg:         saved.msg       || '',\n  timestamp:   saved.timestamp || new Date().toISOString(),\n  messageId:   saved.messageId || '',\n  status:      'NOVO',\n  historicoRaw: '',\n  score:       0,\n  tentativas:  0,\n  isNovo:      true,\n  resumo:      ''\n} }];"
+      },
+      "id": "044d4787-b426-4e15-ba92-13a1ccd48e9e",
+      "name": "13d.Contexto Reaberto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_NUMBER_ID }}"
+      },
+      "id": "315b7915-dfae-4f8a-8d91-b586bf28cba0",
+      "name": "14.Aviso Já Entregue",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        2032,
+        240
+      ],
+      "webhookId": "240bc333-5ea8-491d-8dff-320d0457ddde",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefone": "={{ $json.phone }}",
+            "ULTIMA_MSG": "={{ $json.timestamp }}",
+            "Tentativas_Pos_Entrega": "={{ $json.tentativas + 1 }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "d89cebda-0c39-455b-a5c7-87f7e9890716",
+      "name": "14b.Log Retorno ENTREGUE",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2256,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isNovo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4bda976c-3593-4558-b057-9dce77e2d51b",
+      "name": "15.IF Lead Novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nreturn [{ json: {\n  _newCtx: {\n    phone:     ctx.phone,\n    msg:       ctx.msg,\n    timestamp: ctx.timestamp,\n    messageId: ctx.messageId\n  },\n  ...ctx\n} }];"
+      },
+      "id": "bc3d678c-07e0-4e2c-9d02-425f7c4cb870",
+      "name": "15b_p.Salvar Ctx Novo Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefone": "={{ $json.phone }}",
+            "Status": "NOVO",
+            "Historico": "",
+            "Score": "0",
+            "Resumo": "",
+            "ULTIMA_MSG": "={{ $json.timestamp }}",
+            "Origem": "WhatsApp",
+            "Data_Entrega": "",
+            "Tentativas_Pos_Entrega": "0"
+          }
+        },
+        "options": {}
+      },
+      "id": "16735328-c7b2-4651-a451-8e241a374538",
+      "name": "15b.Cadastrar Novo Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2464,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sheets substituiu item.json pelos dados gravados (nomes das colunas)\n// _newCtx preserva phone, msg, timestamp, messageId originais\nconst saved = $('15b_p.Salvar Ctx Novo Lead').first().json._newCtx || {};\nreturn [{ json: {\n  phone:        saved.phone     || '',\n  msg:          saved.msg       || '',\n  timestamp:    saved.timestamp || new Date().toISOString(),\n  messageId:    saved.messageId || '',\n  status:       'NOVO',\n  historicoRaw: '',\n  score:        0,\n  isNovo:       true,\n  tentativas:   0,\n  resumo:       ''\n} }];"
+      },
+      "id": "3da87732-4655-478a-92c9-fbb3d5cdfe0e",
+      "name": "15c.Contexto Lead Novo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx=$input.first().json;\nif(!ctx.phone||ctx.msg===undefined) throw new Error('15d: phone ou msg ausente');\nreturn [{json:ctx}];"
+      },
+      "id": "f8cd182b-d84d-40e6-87b2-1fe7789cfe82",
+      "name": "15d.Contexto Lead Existente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// v21.0 FIX #6 e #10:\n// FIX #10: systemPrompt lido de variável de ambiente GPT_SYSTEM_PROMPT se disponível.\n//           Permite corretor ajustar regras de negócio sem editar workflow.\n// FIX #6: rate limit 5s POR TELEFONE — mensagens descartadas silenciosamente.\n//         SOLUÇÃO: rate limit reduzido para 1s (GPT-4o-mini é rápido) e\n//         mensagens em burst são aceitas e processadas em sequência.\n//         Se rate limited, retorna flag para enqueueing futuro (não descarta).\n\ntry {\n  const ctx = $input.first().json;\n\n  const UPSTASH_URL = ($env.UPSTASH_REDIS_URL || '').trim();\n  const UPSTASH_TOKEN = ($env.UPSTASH_REDIS_TOKEN || '').trim();\n  if (UPSTASH_URL && UPSTASH_TOKEN) {\n    const rlKey = `ratelimit:phone:${ctx.phone}`;\n    const rlResp = await $helpers.httpRequest({\n      method: 'POST',\n      // FIX #6: janela reduzida de 5s para 1s — GPT-4o-mini processa em ~500ms\n      url: `${UPSTASH_URL}/set/${encodeURIComponent(rlKey)}/1/nx/ex/1`,\n      headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }\n    });\n    if (rlResp?.result !== 'OK') {\n      // FIX #6: não descarta — retorna rateLimited=true com contexto para 17b poder responder\n      return [{ json: {\n        _ctx: { ...ctx },\n        _gptRaw: JSON.stringify({\n          resposta: 'Recebi sua mensagem! Aguarde um instante que já estou processando... 😊',\n          score: ctx.score || 0,\n          quente: (ctx.score || 0) >= 80,\n          resumo: ctx.resumo || '',\n          rateLimited: false\n        })\n      } }];\n    }\n  }\n\n  // FIX #10: systemPrompt customizável via env, com fallback robusto\n  const customPrompt = ($env.GPT_SYSTEM_PROMPT || '').trim();\n  const systemPrompt = customPrompt || `Você é a assistente virtual de um corretor autônomo de imóveis em Aracaju/SE. Seja educada, natural e NUNCA revele que é IA. Só fale sobre imóveis.\n\nREGRAS ABSOLUTAS:\n- Máximo 2 perguntas por mensagem\n- Português brasileiro natural\n- Sem links desnecessários\n- Se imagem: peça para descrever em texto\n- Se off-topic: redirecione gentilmente\n- Retorne APENAS o objeto JSON abaixo, sem texto fora, sem markdown\n\nPERGUNTAS DE QUALIFICAÇÃO (uma por vez, na ordem):\n1. Tipo de imóvel? (casa, apartamento, terreno, comercial)\n2. Bairro preferido em Aracaju?\n3. Orçamento aproximado?\n4. Prazo para fechar negócio?\n5. Financiamento ou à vista?\n\nSCORE ATUAL DO LEAD: ${ctx.score}/100\nREGRA DE SCORE: NUNCA retorne score menor que ${ctx.score}. Some ao score atual, nunca substituta.\n\nRESUMO ATUAL: ${ctx.resumo || 'Sem resumo ainda.'}\nREGRA DE RESUMO: acumule informações no resumo, não substitua do zero.\n\nSCORING INCREMENTAL (some ao score atual):\n- Orçamento > R$500k: +30\n- Prazo < 90 dias: +40\n- Pediu visita ou proposta: +30\n- Bairro nobre (Jardins, Atalaia, Ponta da Terra, 13 de Julho): +20\n- À vista: +20\n- Já visitou imóvel: +15\n\nSe score >= 80 OU cliente pediu visita/proposta: quente=true.\n\nFORMATO OBRIGATÓRIO (JSON puro, sem markdown, sem texto fora do JSON):\n{\"resposta\": \"Mensagem ao cliente\", \"score\": 45, \"quente\": false, \"resumo\": \"Perfil em uma frase\"}`;\n\n  const userPrompt = `Histórico:\\n${ctx.historicoRaw || ''}\\n\\n---\\nNova mensagem do cliente:\\n${ctx.msg || 'Olá'}`;\n\n  let response;\n  let tentativasAPI = 0;\n  const MAX_TENTATIVAS = 3;\n  while (tentativasAPI < MAX_TENTATIVAS) {\n    try {\n      response = await $helpers.httpRequest({\n        method: 'POST',\n        url: 'https://api.openai.com/v1/chat/completions',\n        headers: { 'Authorization': `Bearer ${$env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },\n        body: {\n          model: 'gpt-4o-mini',\n          response_format: { type: 'json_object' },\n          messages: [\n            { role: 'system', content: systemPrompt },\n            { role: 'user', content: userPrompt }\n          ]\n        }\n      });\n      break;\n    } catch(apiErr) {\n      tentativasAPI++;\n      if (tentativasAPI === MAX_TENTATIVAS) throw apiErr;\n      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, tentativasAPI - 1)));\n    }\n  }\n\n  const rawContent = response.choices?.[0]?.message?.content || '{}';\n  return [{ json: { _ctx: { ...ctx }, _gptRaw: rawContent } }];\n\n} catch(e) {\n  const ctx = $input.first().json;\n  const scoreSalvo = ctx.score || 0;\n  return [{ json: {\n    _ctx: { ...ctx },\n    _gptRaw: JSON.stringify({ resposta: 'Como posso te ajudar a encontrar um imóvel em Aracaju?', score: scoreSalvo, quente: scoreSalvo >= 80, resumo: ctx.resumo || '' })\n  } }];\n}"
+      },
+      "id": "73cf14d0-8386-4235-8fd4-b1911dd6bfd1",
+      "name": "16.GPT Qualificar e Responder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try{\n  const input=$input.first().json;\n  const ctx=input._ctx;\n  const raw=input._gptRaw||'{}';\n  let p;\n  try{p=JSON.parse(raw);}catch(e1){const m=raw.match(/\\{[\\s\\S]*?\\}/);if(m){try{p=JSON.parse(m[0]);}catch(e2){p=null;}}}\n  if(!p||typeof p!=='object') p={resposta:'Olá! Posso te ajudar.',score:0,quente:false,resumo:'erro_parse'};\n  if(typeof p.resposta!=='string'||!p.resposta.trim()) p.resposta='Como posso te ajudar?';\n  if(typeof p.score!=='number'||isNaN(p.score)) p.score=ctx.score||0;\n  if(typeof p.quente!=='boolean') p.quente=false;\n  if(typeof p.resumo!=='string') p.resumo=ctx.resumo||'';\n  const scoreNovo=Math.min(100,Math.max(Number(ctx.score)||0,Number(p.score)||0));\n  const quente=p.quente===true||scoreNovo>=80;\n  return [{json:{phone:ctx.phone,msg:ctx.msg,timestamp:ctx.timestamp,historicoRaw:ctx.historicoRaw,score:scoreNovo,tentativas:ctx.tentativas||0,resposta:p.resposta.slice(0,1500),quente,resumo:(p.resumo||ctx.resumo||'').slice(0,300),isNovo:ctx.isNovo||false,rateLimited:false}}];\n}catch(e){\n  const ctx=$input.first().json._ctx||{};\n  const s=Number(ctx.score)||0;\n  return [{json:{phone:ctx.phone||'',msg:ctx.msg||'',timestamp:ctx.timestamp||new Date().toISOString(),historicoRaw:ctx.historicoRaw||'',score:s,tentativas:ctx.tentativas||0,resposta:'Olá!',quente:s>=80,resumo:ctx.resumo||'',rateLimited:false}}];\n}"
+      },
+      "id": "2c5021ee-53fd-4a3d-8547-e54219ff25d7",
+      "name": "17.Parse Blindado GPT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.quente }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "347c887e-7487-43e0-90c2-ca746d031055",
+      "name": "18.IF Lead QUENTE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_NUMBER_ID }}"
+      },
+      "id": "d5105198-2021-4932-85af-7431a99879f0",
+      "name": "21.Handover Msg Cliente",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        3344,
+        256
+      ],
+      "webhookId": "a453c33e-2c80-4525-8151-2bfa67a0d69f",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nreturn [{ json: {\n  _hotCtx: {\n    phone:   ctx.phone,\n    score:   ctx.score,\n    resumo:  ctx.resumo,\n    msg:     ctx.msg,\n    timestamp: ctx.timestamp\n  },\n  ...ctx\n} }];"
+      },
+      "id": "02241616-1d03-4ec1-955e-ce31c2f4415f",
+      "name": "23_p.Salvar Ctx Handover",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3344,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefone": "={{ $json.phone }}",
+            "Status": "ENTREGUE",
+            "Score": "={{ $json.score }}",
+            "Resumo": "={{ $json.resumo }}",
+            "Historico": "={{ (($json.historicoRaw || '') + '\\n[' + $json.timestamp + '] Cliente: ' + $json.msg + '\\nBot: ' + $json.resposta + '\\n[ENTREGUE AO CORRETOR]').slice(-6000).replace(/^[^\\n]*\\n/, '') }}",
+            "ULTIMA_MSG": "={{ $json.timestamp }}",
+            "Data_Entrega": "={{ $json.timestamp }}",
+            "Tentativas_Pos_Entrega": "0"
+          }
+        },
+        "options": {}
+      },
+      "id": "af875bc3-0c0a-43c1-b6d8-8d1ea8d168e7",
+      "name": "23.Marcar ENTREGUE CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        3568,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// node23 (Sheets) substituiu item.json por colunas da planilha\n// _hotCtx preserva phone, score, resumo originais do lead quente\nconst saved = $('23_p.Salvar Ctx Handover').first().json._hotCtx || {};\nconst phone = saved.phone || '';\nif (!phone) throw new Error('22g: phone ausente no _hotCtx');\nconst CORRETOR_PHONE = ($env.CORRETOR_PHONE || '').trim();\nif (!CORRETOR_PHONE) throw new Error('CORRETOR_PHONE nao configurado');\nreturn [{ json: {\n  phone:        phone,\n  score:        saved.score   || 0,\n  resumo:       saved.resumo  || '',\n  msg:          saved.msg     || '',\n  timestamp:    saved.timestamp || new Date().toISOString(),\n  corretorPhone: CORRETOR_PHONE\n} }];"
+      },
+      "id": "a22d4a68-921d-4784-a1e1-bbbed98fd4dc",
+      "name": "22g.Guard CORRETOR_PHONE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3792,
+        256
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "console.error('[CRÍTICO] CORRETOR_PHONE ausente.');\nreturn [{json:{...($input.first().json),erroNotificacao:'CORRETOR_PHONE_AUSENTE'}}];"
+      },
+      "id": "18187fa5-3645-4d8b-8b98-20ea0e81ab91",
+      "name": "22e.Erro Guard Corretor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3792,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=2",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ new Date().toISOString() }}",
+            "Telefone": "={{ $json.phone }}",
+            "Erro": "={{ $json.erroNotificacao }}",
+            "Score": "={{ $json.score }}",
+            "Resumo": "={{ $json.resumo }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "b9a7b5ec-098e-401a-8262-fbbe4c006c7e",
+      "name": "22f.Log Erro Notificacao",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        4016,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_NUMBER_ID }}"
+      },
+      "id": "2fa445e6-a49e-4010-9110-f5c637275e92",
+      "name": "22.Notificar Corretor",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        4016,
+        256
+      ],
+      "webhookId": "2f7b6579-03d3-49d0-850d-42fdcc0c9c82",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_NUMBER_ID }}"
+      },
+      "id": "a8dbe4e6-0561-4dde-bae8-28eb2d75c2ef",
+      "name": "19.Resposta Normal WhatsApp",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        3344,
+        480
+      ],
+      "webhookId": "d853cb78-4975-467d-b050-cf5f2fbc772a",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Envio WhatsApp falhou — garante que o histórico seja salvo no CRM\nconsole.warn('[WA-WARN] Falha ao enviar resposta ao cliente. Salvando histórico.');\nreturn [{ json: $input.first().json }];"
+      },
+      "id": "01c2e0bc-71f5-49d0-89a5-bf57752c2e6f",
+      "name": "19e.Erro Resposta Normal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3344,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefone": "={{ $json.phone }}",
+            "Historico": "={{ (($json.historicoRaw || '') + '\\n[' + $json.timestamp + '] Cliente: ' + $json.msg + '\\nBot: ' + $json.resposta).slice(-6000).replace(/^[^\\n]*\\n/, '') }}",
+            "Score": "={{ $json.score }}",
+            "Resumo": "={{ $json.resumo }}",
+            "ULTIMA_MSG": "={{ $json.timestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "c3601d5f-f989-4e02-9f10-f7a7af840645",
+      "name": "20.Atualizar Historico CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        3568,
+        480
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1b.Webhook Meta Verify GET": {
+      "main": [
+        [
+          {
+            "node": "1c.Validar e Responder Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1c.Validar e Responder Challenge": {
+      "main": [
+        [
+          {
+            "node": "1d.Respond Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1.Webhook WhatsApp POST": {
+      "main": [
+        [
+          {
+            "node": "0.Validar Ambiente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "0.Validar Ambiente": {
+      "main": [
+        [
+          {
+            "node": "2.Extrair e Validar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2.Extrair e Validar Payload": {
+      "main": [
+        [
+          {
+            "node": "3.IF Processar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3.IF Processar?": {
+      "main": [
+        [
+          {
+            "node": "3r.Dedup Redis SET NX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3r.Dedup Redis SET NX": {
+      "main": [
+        [
+          {
+            "node": "3s.IF Mensagem Nova?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3s.IF Mensagem Nova?": {
+      "main": [
+        [
+          {
+            "node": "4.Switch Tipo Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4.Switch Tipo Mensagem": {
+      "main": [
+        [
+          {
+            "node": "4b.IF MediaId Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "9.Tratar Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4b.IF MediaId Válido?": {
+      "main": [
+        [
+          {
+            "node": "4d.Preparar Contexto Audio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "4c.Audio Sem MediaId Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4d.Preparar Contexto Audio": {
+      "main": [
+        [
+          {
+            "node": "5.Buscar URL Audio Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5.Buscar URL Audio Meta": {
+      "main": [
+        [
+          {
+            "node": "5b.Extrair URL Audio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "5e.Erro Buscar URL Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5b.Extrair URL Audio": {
+      "main": [
+        [
+          {
+            "node": "6.Baixar Audio OGG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5e.Erro Buscar URL Audio": {
+      "main": [
+        [
+          {
+            "node": "8b.Consolidar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6.Baixar Audio OGG": {
+      "main": [
+        [
+          {
+            "node": "6v.Validar Tamanho Audio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "6e.Erro Download Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6v.Validar Tamanho Audio": {
+      "main": [
+        [
+          {
+            "node": "7.Whisper Transcrever",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6e.Erro Download Audio": {
+      "main": [
+        [
+          {
+            "node": "8b.Consolidar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7.Whisper Transcrever": {
+      "main": [
+        [
+          {
+            "node": "8.Montar Contexto Audio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "7b.Whisper Erro Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7b.Whisper Erro Fallback": {
+      "main": [
+        [
+          {
+            "node": "8b.Consolidar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8.Montar Contexto Audio": {
+      "main": [
+        [
+          {
+            "node": "8b.Consolidar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4c.Audio Sem MediaId Fallback": {
+      "main": [
+        [
+          {
+            "node": "8b.Consolidar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8b.Consolidar Audio": {
+      "main": [
+        [
+          {
+            "node": "10b.Consolidar Rotas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9.Tratar Imagem": {
+      "main": [
+        [
+          {
+            "node": "10b.Consolidar Rotas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10.Texto e Outros": {
+      "main": [
+        [
+          {
+            "node": "10b.Consolidar Rotas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10b.Consolidar Rotas": {
+      "main": [
+        [
+          {
+            "node": "11.CRM Buscar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11.CRM Buscar Lead": {
+      "main": [
+        [
+          {
+            "node": "11b.Preparar Contexto Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "11e.Erro CRM Buscar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11b.Preparar Contexto Lead": {
+      "main": [
+        [
+          {
+            "node": "13.IF Status ENTREGUE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11e.Erro CRM Buscar Lead": {
+      "main": [
+        [
+          {
+            "node": "13.IF Status ENTREGUE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13.IF Status ENTREGUE?": {
+      "main": [
+        [
+          {
+            "node": "13b.IF Tentativas Excedidas?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "15.IF Lead Novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13b.IF Tentativas Excedidas?": {
+      "main": [
+        [
+          {
+            "node": "13c_p.Salvar Ctx Reabrir",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14.Aviso Já Entregue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13c_p.Salvar Ctx Reabrir": {
+      "main": [
+        [
+          {
+            "node": "13c.Reabrir Lead Expirado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13c.Reabrir Lead Expirado": {
+      "main": [
+        [
+          {
+            "node": "13d.Contexto Reaberto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13d.Contexto Reaberto": {
+      "main": [
+        [
+          {
+            "node": "16.GPT Qualificar e Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14.Aviso Já Entregue": {
+      "main": [
+        [
+          {
+            "node": "14b.Log Retorno ENTREGUE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15.IF Lead Novo?": {
+      "main": [
+        [
+          {
+            "node": "15b_p.Salvar Ctx Novo Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "15d.Contexto Lead Existente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15b_p.Salvar Ctx Novo Lead": {
+      "main": [
+        [
+          {
+            "node": "15b.Cadastrar Novo Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15b.Cadastrar Novo Lead": {
+      "main": [
+        [
+          {
+            "node": "15c.Contexto Lead Novo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15c.Contexto Lead Novo": {
+      "main": [
+        [
+          {
+            "node": "16.GPT Qualificar e Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15d.Contexto Lead Existente": {
+      "main": [
+        [
+          {
+            "node": "16.GPT Qualificar e Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16.GPT Qualificar e Responder": {
+      "main": [
+        [
+          {
+            "node": "17.Parse Blindado GPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17.Parse Blindado GPT": {
+      "main": [
+        [
+          {
+            "node": "18.IF Lead QUENTE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "18.IF Lead QUENTE?": {
+      "main": [
+        [
+          {
+            "node": "21.Handover Msg Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "19.Resposta Normal WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "21.Handover Msg Cliente": {
+      "main": [
+        [
+          {
+            "node": "23_p.Salvar Ctx Handover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "23_p.Salvar Ctx Handover": {
+      "main": [
+        [
+          {
+            "node": "23.Marcar ENTREGUE CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "23.Marcar ENTREGUE CRM": {
+      "main": [
+        [
+          {
+            "node": "22g.Guard CORRETOR_PHONE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "22g.Guard CORRETOR_PHONE": {
+      "main": [
+        [
+          {
+            "node": "22.Notificar Corretor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "22e.Erro Guard Corretor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "22e.Erro Guard Corretor": {
+      "main": [
+        [
+          {
+            "node": "22f.Log Erro Notificacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "19.Resposta Normal WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "20.Atualizar Historico CRM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "19e.Erro Resposta Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "19e.Erro Resposta Normal": {
+      "main": [
+        [
+          {
+            "node": "20.Atualizar Historico CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "instanceId": "87e91b565412f931c334d65cc7ccd0723ccc0c7d21c82fcfd6a2f3f90c0f6037"
+  },
+  "tags": []
+}

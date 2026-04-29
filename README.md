@@ -1,5 +1,5 @@
 texto
-#  Assistente WhatsApp GPT v32.1 — Freelancer Imóveis Aracaju
+#  Assistente WhatsApp GPT v32.1 
 
 Workflow N8N para automação completa de atendimento e qualificação de leads imobiliários via WhatsApp, integrado com GPT-4o-mini, Google Sheets (CRM) e Upstash Redis.
 

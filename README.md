@@ -1,17 +1,17 @@
 texto
-# 🏠 Assistente WhatsApp GPT v32.1 — Freelancer Imóveis Aracaju
+#  Assistente WhatsApp GPT v32.1 — Freelancer Imóveis Aracaju
 
 Workflow N8N para automação completa de atendimento e qualificação de leads imobiliários via WhatsApp, integrado com GPT-4o-mini, Google Sheets (CRM) e Upstash Redis.
 
 ---
 
-## 📋 Visão Geral
+##  Visão Geral
 
 Este workflow automatiza o ciclo completo de captação e qualificação de leads para corretores autônomos de imóveis em Aracaju/SE. O bot atua como assistente virtual, qualifica o cliente com perguntas estratégicas, atribui um score de 0 a 100 e, quando o lead está "quente" (score ≥ 80), realiza o handover automático para o corretor via WhatsApp.
 
 ---
 
-## ⚙️ Tecnologias
+##  Tecnologias
 
 | Ferramenta | Função |
 |---|---|
@@ -24,7 +24,7 @@ Este workflow automatiza o ciclo completo de captação e qualificação de lead
 
 ---
 
-## 🔄 Fluxo Principal
+##  Fluxo Principal
 Webhook WhatsApp POST
 └─> Validar Ambiente (variáveis ​​obrigatórias)
 └─> Extrair e Validar Payload Meta
@@ -47,7 +47,7 @@ texto
 
 ---
 
-## 🔐 Variáveis de Ambiente Obrigatórias
+##  Variáveis de Ambiente Obrigatórias
 
 Configure as seguintes variáveis no N8N antes de ativar o workflow:
 
@@ -65,7 +65,7 @@ Configure as seguintes variáveis no N8N antes de ativar o workflow:
 
 ---
 
-## 🏗️ Estrutura do CRM (Google Sheets)
+##  Estrutura do CRM (Google Sheets)
 
 ### Aba Principal (gid=0) — Leads
 
@@ -87,7 +87,7 @@ Registra falhas críticas na notificação ao corretor.
 
 ---
 
-## 📊 Sistema de Scoring
+##  Sistema de Scoring
 
 O GPT classifica o lead incrementalmente. Os pontos **somam** ao score existente (nunca reduzem):
 
@@ -104,7 +104,7 @@ O GPT classifica o lead incrementalmente. Os pontos **somam** ao score existente
 
 ---
 
-## 🛡️ Tratamento de Erros e Resiliência
+##  Tratamento de Erros e Resiliência
 
 - **Dedup atômico via Redis** (`SET NX EX`): evita processamento duplicado mesmo sob race conditions. Se o Redis estiver offline, aceita a mensagem com log de warning.
 - **Fallback de áudio**: cada etapa do pipeline de áudio (URL, download, Whisper) tem tratamento de erro individual com propagação de contexto via `_msgCtx`.
@@ -115,7 +115,7 @@ O GPT classifica o lead incrementalmente. Os pontos **somam** ao score existente
 
 ---
 
-## 🚀 Como Importar no N8N
+##  Como Importar no N8N
 
 1. Acesse seu N8N e clique em **Import from file**.
 2. Selecione o arquivo JSON deste repositório.
@@ -129,7 +129,7 @@ O GPT classifica o lead incrementalmente. Os pontos **somam** ao score existente
 
 ---
 
-## 📌 Observações
+##  Observações
 
 - O workflow inicia **inativo** por padrão — ative manualmente após configurar todas as credenciais.
 - O histórico de conversa é truncado nos últimos **6.000 caracteres** para otimizar o contexto enviado ao GPT.
